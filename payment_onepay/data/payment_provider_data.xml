@@ -1,46 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <record id="payment_provider_form_onepay" model="ir.ui.view">
-        <field name="name">payment.provider.form.onepay</field>
-        <field name="model">payment.provider</field>
-        <field name="inherit_id" ref="payment.payment_provider_form"/>
-        <field name="arch" type="xml">
+    <record id="payment_method_onepay" model="payment.method">
+        <field name="name">OnePay</field>
+        <field name="code">onepay</field>
+        <field name="sequence">10</field>
+        <field name="active">True</field>
+    </record>
 
-            <!-- Add OnePay fields inside the default Credentials tab -->
-            <xpath expr="//page[@name='credentials']" position="inside">
-                <group string="OnePay Credentials" invisible="code != 'onepay'">
-                    <field name="onepay_app_id"
-                           required="code == 'onepay'"/>
+    <template id="redirect_form" name="OnePay Redirect Form">
+        <form t-att-action="api_url" method="get" target="_self">
+        </form>
+    </template>
 
-                    <field name="onepay_app_token"
-                           required="code == 'onepay'"
-                           password="True"/>
-
-                    <field name="onepay_hash_salt"
-                           required="code == 'onepay'"
-                           password="True"/>
-
-                    <field name="onepay_api_base_url"
-                           required="code == 'onepay'"/>
-                </group>
-            </xpath>
-
-            <!-- Add callback information inside the default Configuration tab -->
-            <xpath expr="//page[@name='configuration']" position="inside">
-                <group string="OnePay Callback URL" invisible="code != 'onepay'">
-                    <div class="alert alert-info" role="status" colspan="2">
-                        Add this URL in the OnePay merchant portal APP callback setting:
-                        <br/>
-                        <strong>/payment/onepay/webhook</strong>
-                        <br/>
-                        Full example:
-                        <strong>https://your-domain.com/payment/onepay/webhook</strong>
-                    </div>
-                </group>
-            </xpath>
-
-        </field>
+    <record id="payment_provider_onepay" model="payment.provider">
+        <field name="name">OnePay</field>
+        <field name="code">onepay</field>
+        <field name="state">disabled</field>
+        <field name="redirect_form_view_id" ref="payment_onepay.redirect_form"/>
+        <field name="payment_method_ids" eval="[(6, 0, [ref('payment_onepay.payment_method_onepay')])]"/>
+        <field name="image_128" type="base64" file="payment_onepay/static/description/icon.png"/>
     </record>
 
 </odoo>
