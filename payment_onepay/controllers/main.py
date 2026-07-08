@@ -27,6 +27,23 @@ class OnePayController(http.Controller):
 
         return dict(request.params)
 
+    def _process_onepay_payload(self, payload):
+        Transaction = request.env["payment.transaction"].sudo()
+
+        tx = Transaction._get_tx_from_notification_data("onepay", payload)
+        verified_data = tx._onepay_verify_status(payload)
+
+        if hasattr(Transaction, "_process"):
+            Transaction._process("onepay", verified_data)
+
+        elif hasattr(Transaction, "_handle_notification_data"):
+            Transaction._handle_notification_data("onepay", verified_data)
+
+        else:
+            tx._process_notification_data(verified_data)
+
+        return tx
+
     @http.route(
         "/payment/onepay/webhook",
         type="http",
@@ -39,20 +56,8 @@ class OnePayController(http.Controller):
 
         _logger.info("OnePay webhook received: %s", payload)
 
-        Transaction = request.env["payment.transaction"].sudo()
-
         try:
-            tx = Transaction._get_tx_from_notification_data("onepay", payload)
-            verified_data = tx._onepay_verify_status(payload)
-
-            if hasattr(Transaction, "_process"):
-                Transaction._process("onepay", verified_data)
-
-            elif hasattr(Transaction, "_handle_notification_data"):
-                Transaction._handle_notification_data("onepay", verified_data)
-
-            else:
-                tx._process_notification_data(verified_data)
+            self._process_onepay_payload(payload)
 
         except Exception as error:
             _logger.exception("OnePay webhook processing failed.")
@@ -75,4 +80,15 @@ class OnePayController(http.Controller):
         website=True,
     )
     def onepay_return(self, **kwargs):
+        payload = self._get_json_payload()
+
+        _logger.info("OnePay return received: %s", payload)
+
+        try:
+            if payload:
+                self._process_onepay_payload(payload)
+
+        except Exception:
+            _logger.exception("OnePay return processing failed.")
+
         return request.redirect("/payment/status")

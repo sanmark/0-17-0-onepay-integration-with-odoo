@@ -205,7 +205,10 @@ class PaymentTransaction(models.Model):
             "customer_last_name": last_name,
             "customer_phone_number": self._onepay_get_customer_phone(),
             "customer_email": self._onepay_get_customer_email(),
-            "transaction_redirect_url": "%s/payment/onepay/return" % base_url,
+            "transaction_redirect_url": "%s/payment/onepay/return?reference=%s" % (
+                base_url,
+                quote_plus(self.reference or ""),
+            ),
             "additionalData": odoo_reference,
         }
 
