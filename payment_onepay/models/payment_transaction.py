@@ -1,6 +1,8 @@
 import hashlib
 import logging
 
+from urllib.parse import quote_plus
+
 import requests
 
 from odoo import _, models
