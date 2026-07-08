@@ -278,22 +278,55 @@ class PaymentTransaction(models.Model):
 
         response_json = self._onepay_post("/v3/transaction/status/", payload)
 
-        status = self._onepay_get_nested_value(response_json, "status")
-        amount = self._onepay_get_nested_value(response_json, "amount")
-        currency = self._onepay_get_nested_value(response_json, "currency")
+        # OnePay may return API status at top-level:
+        # {"status": 200, "message": "...", "data": {...}}
+        # The real payment status should be read from data.status.
+        response_data = response_json.get("data")
+        if not isinstance(response_data, dict):
+            response_data = response_json
 
-        provider_reference = self._onepay_get_nested_value(
-            response_json,
-            "ipg_transaction_id",
-            "transaction_id",
-            "onepay_transaction_id",
-        ) or onepay_transaction_id
+        status = response_data.get("status")
+
+        # Fallback to callback status if status API does not return payment status.
+        if status in [None, False, ""]:
+            status = callback_payload.get("status")
+
+        amount = (
+            response_data.get("amount")
+            or response_data.get("gross_amount")
+            or response_data.get("net_amount")
+            or response_json.get("amount")
+        )
+
+        currency = (
+            response_data.get("currency")
+            or response_json.get("currency")
+            or self.currency_id.name
+        )
+
+        status_message = (
+            response_data.get("status_message")
+            or response_data.get("message")
+            or response_json.get("status_message")
+            or response_json.get("message")
+            or callback_payload.get("status_message")
+        )
+
+        provider_reference = (
+            response_data.get("ipg_transaction_id")
+            or response_data.get("transaction_id")
+            or response_data.get("onepay_transaction_id")
+            or response_json.get("ipg_transaction_id")
+            or response_json.get("transaction_id")
+            or response_json.get("onepay_transaction_id")
+            or onepay_transaction_id
+        )
 
         return {
             "reference": self.reference,
             "provider_reference": provider_reference,
             "status": status,
-            "status_message": callback_payload.get("status_message"),
+            "status_message": status_message,
             "amount": amount,
             "currency": currency,
             "raw_response": response_json,
