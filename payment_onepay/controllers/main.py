@@ -33,16 +33,24 @@ class OnePayController(http.Controller):
         tx = Transaction._get_tx_from_notification_data("onepay", payload)
         verified_data = tx._onepay_verify_status(payload)
 
-        if hasattr(Transaction, "_process"):
-            Transaction._process("onepay", verified_data)
+        processed_tx = False
 
+        # Odoo 19 style
+        if hasattr(Transaction, "_process"):
+            processed_tx = Transaction._process("onepay", verified_data)
+
+        # Older fallback
         elif hasattr(Transaction, "_handle_notification_data"):
-            Transaction._handle_notification_data("onepay", verified_data)
+            processed_tx = Transaction._handle_notification_data("onepay", verified_data)
 
         else:
             tx._process_notification_data(verified_data)
+            processed_tx = tx
 
-        return tx
+        if processed_tx and processed_tx.state == "done" and not processed_tx.is_post_processed:
+            processed_tx.sudo()._post_process()
+
+        return processed_tx
 
     @http.route(
         "/payment/onepay/webhook",
