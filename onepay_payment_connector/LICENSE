@@ -1,0 +1,16 @@
+
+---
+
+## 4. `LICENSE`
+
+For a paid marketplace app using `OPL-1`, use this simple license file:
+
+```text
+Odoo Proprietary License v1.0 (OPL-1)
+
+Copyright (c) Sanmark Solutions.
+
+This module is licensed under the Odoo Proprietary License v1.0.
+See the license value defined in the module manifest.
+
+You may use, install, and run this module according to the terms of the Odoo Apps Store purchase and the Odoo Proprietary License.

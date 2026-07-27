@@ -17,9 +17,9 @@
         <field name="name">OnePay</field>
         <field name="code">onepay</field>
         <field name="state">disabled</field>
-        <field name="redirect_form_view_id" ref="payment_onepay.redirect_form"/>
-        <field name="payment_method_ids" eval="[(6, 0, [ref('payment_onepay.payment_method_onepay')])]"/>
-        <field name="image_128" type="base64" file="payment_onepay/static/description/icon.png"/>
+        <field name="redirect_form_view_id" ref="onepay_payment_connector.redirect_form"/>
+        <field name="payment_method_ids" eval="[(6, 0, [ref('onepay_payment_connector.payment_method_onepay')])]"/>
+        <field name="image_128" type="base64" file="onepay_payment_connector/static/description/icon.png"/>
     </record>
 
 </odoo>
