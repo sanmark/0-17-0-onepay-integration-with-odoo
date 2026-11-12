@@ -7,6 +7,7 @@ import requests
 
 from odoo import _, models
 from odoo.exceptions import ValidationError
+from odoo.fields import Domain
 from odoo.tools import float_compare
 
 _logger = logging.getLogger(__name__)
@@ -183,7 +184,7 @@ class PaymentTransaction(models.Model):
         amount_string = "%.2f" % self.amount
         first_name, last_name = self._onepay_get_partner_names()
 
-        base_url = self.env["ir.config_parameter"].sudo().get_param(
+        base_url = self.env["ir.config_parameter"].sudo().get_str(
             "web.base.url",
             "",
         ).rstrip("/")
@@ -336,45 +337,44 @@ class PaymentTransaction(models.Model):
     # Odoo notification handling
     # -------------------------------------------------------------------------
 
-    def _get_tx_from_notification_data(self, provider_code, notification_data):
+    def _search_by_reference(self, provider_code, payment_data):
         if provider_code != "onepay":
-            return super()._get_tx_from_notification_data(provider_code, notification_data)
+            return super()._search_by_reference(provider_code, payment_data)
 
         reference = (
-            notification_data.get("reference")
-            or notification_data.get("additional_data")
-            or notification_data.get("additionalData")
+            payment_data.get("reference")
+            or payment_data.get("additional_data")
+            or payment_data.get("additionalData")
         )
 
         provider_reference = (
-            notification_data.get("provider_reference")
-            or notification_data.get("transaction_id")
-            or notification_data.get("ipg_transaction_id")
-            or notification_data.get("onepay_transaction_id")
+            payment_data.get("provider_reference")
+            or payment_data.get("transaction_id")
+            or payment_data.get("ipg_transaction_id")
+            or payment_data.get("onepay_transaction_id")
         )
 
-        domain = [("provider_code", "=", "onepay")]
+        base_domain = Domain("provider_code", "=", "onepay")
 
         if provider_reference:
-            tx = self.search(domain + [("provider_reference", "=", provider_reference)], limit=1)
+            tx = self.search(
+                Domain.AND([base_domain, Domain("provider_reference", "=", provider_reference)]),
+                limit=1,
+            )
             if tx:
                 return tx
 
         if reference:
-            tx = self.search(domain + [("reference", "=", reference)], limit=1)
+            tx = self.search(
+                Domain.AND([base_domain, Domain("reference", "=", reference)]),
+                limit=1,
+            )
             if tx:
                 return tx
 
         raise ValidationError(
-            _("No OnePay transaction found for data: %s") % notification_data
+            _("No OnePay transaction found for data: %s") % payment_data
         )
-
-    def _process_notification_data(self, notification_data):
-        if self.provider_code != "onepay":
-            return super()._process_notification_data(notification_data)
-
-        self.ensure_one()
-        self._onepay_apply_payment_status(notification_data)
 
     def _extract_reference(self, provider_code, payment_data):
         if provider_code != "onepay":

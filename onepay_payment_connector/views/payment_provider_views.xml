@@ -7,19 +7,14 @@
         <field name="inherit_id" ref="payment.payment_provider_form"/>
         <field name="arch" type="xml">
 
-            <xpath expr="//page[@name='credentials']" position="inside">
+            <xpath expr="//group[@name='provider_credentials']" position="inside">
                 <group string="OnePay Credentials" invisible="code != 'onepay'">
                     <field name="onepay_app_id"
                            required="code == 'onepay'"/>
-
                     <field name="onepay_app_token"
-                           required="code == 'onepay'"
-                           password="True"/>
-
+                           required="code == 'onepay'"/>
                     <field name="onepay_hash_salt"
-                           required="code == 'onepay'"
-                           password="True"/>
-
+                           required="code == 'onepay'"/>
                     <field name="onepay_api_base_url"
                            required="code == 'onepay'"/>
                 </group>

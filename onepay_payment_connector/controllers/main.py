@@ -30,27 +30,18 @@ class OnePayController(http.Controller):
     def _process_onepay_payload(self, payload):
         Transaction = request.env["payment.transaction"].sudo()
 
-        tx = Transaction._get_tx_from_notification_data("onepay", payload)
+        # Locate the transaction so we can run the server-to-server status
+        # confirmation before trusting any callback data.
+        tx = Transaction._search_by_reference("onepay", payload)
         verified_data = tx._onepay_verify_status(payload)
 
-        processed_tx = False
+        # Odoo 20 orchestrates extraction + updates through _process().
+        tx._process(verified_data)
 
-        # Odoo 19 style
-        if hasattr(Transaction, "_process"):
-            processed_tx = Transaction._process("onepay", verified_data)
+        if tx.state == "done" and not tx.is_post_processed:
+            tx.sudo()._post_process()
 
-        # Older fallback
-        elif hasattr(Transaction, "_handle_notification_data"):
-            processed_tx = Transaction._handle_notification_data("onepay", verified_data)
-
-        else:
-            tx._process_notification_data(verified_data)
-            processed_tx = tx
-
-        if processed_tx and processed_tx.state == "done" and not processed_tx.is_post_processed:
-            processed_tx.sudo()._post_process()
-
-        return processed_tx
+        return tx
 
     @http.route(
         "/payment/onepay/webhook",

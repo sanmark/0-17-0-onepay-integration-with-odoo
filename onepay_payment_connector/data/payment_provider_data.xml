@@ -1,13 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <record id="payment_method_onepay" model="payment.method">
-        <field name="name">OnePay</field>
-        <field name="code">onepay</field>
-        <field name="sequence">10</field>
-        <field name="active">True</field>
-    </record>
-
     <template id="redirect_form" name="OnePay Redirect Form">
         <form t-att-action="api_url" method="get" target="_self">
         </form>
@@ -16,10 +9,18 @@
     <record id="payment_provider_onepay" model="payment.provider">
         <field name="name">OnePay</field>
         <field name="code">onepay</field>
-        <field name="state">disabled</field>
+        <field name="is_live">False</field>
         <field name="redirect_form_view_id" ref="onepay_payment_connector.redirect_form"/>
-        <field name="payment_method_ids" eval="[(6, 0, [ref('onepay_payment_connector.payment_method_onepay')])]"/>
-        <field name="image_128" type="base64" file="onepay_payment_connector/static/description/icon.png"/>
+        <field name="image_128" type="bytes" file="onepay_payment_connector/static/description/icon.png"/>
+    </record>
+
+    <record id="payment_method_onepay" model="payment.method">
+        <field name="name">OnePay</field>
+        <field name="code">onepay</field>
+        <field name="provider_id" ref="onepay_payment_connector.payment_provider_onepay"/>
+        <field name="sequence">10</field>
+        <field name="active">True</field>
+        <field name="image" type="bytes" file="onepay_payment_connector/static/description/icon.png"/>
     </record>
 
 </odoo>

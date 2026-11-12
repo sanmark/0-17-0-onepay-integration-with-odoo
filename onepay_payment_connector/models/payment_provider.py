@@ -1,4 +1,4 @@
-from odoo import api, fields, models
+from odoo import fields, models
 
 
 class PaymentProvider(models.Model):
@@ -32,42 +32,6 @@ class PaymentProvider(models.Model):
         required_if_provider="onepay",
         help="Default: https://api.onepay.lk",
     )
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        providers = super().create(vals_list)
-
-        onepay_providers = providers.filtered(lambda provider: provider.code == "onepay")
-        if onepay_providers:
-            onepay_providers._onepay_setup_account_payment_method()
-
-        return providers
-
-    def write(self, vals):
-        result = super().write(vals)
-
-        onepay_providers = self.filtered(lambda provider: provider.code == "onepay")
-        if onepay_providers:
-            onepay_providers._onepay_setup_account_payment_method()
-
-        return result
-
-    def _onepay_setup_account_payment_method(self):
-        """
-        Create the accounting payment method and journal payment method line
-        required by account.payment.
-
-        Without this, Odoo can confirm the payment.transaction, but the generated
-        account.payment may stay in Draft with empty Payment Method.
-        """
-        self.env["payment.provider"].sudo()._setup_provider("onepay")
-
-        for provider in self.sudo():
-            if provider.code != "onepay":
-                continue
-
-            if provider.journal_id and hasattr(provider, "_ensure_payment_method_line"):
-                provider._ensure_payment_method_line(allow_create=True)
 
     def _compute_feature_support_fields(self):
         super()._compute_feature_support_fields()

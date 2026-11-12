@@ -1,12 +1,12 @@
 {
     "name": "OnePay Payment Provider",
-    "version": "19.0.1.1.1",
+    "version": "20.0.1.1.1",
     "author": "Sanmark Solutions",
     "website": "https://sanmarksolutions.com/",
     "category": "Accounting/Payment Providers",
     "summary": "Accept online payments in Odoo using OnePay payment gateway",
     "description": """
-OnePay Payment Provider for Odoo 19.
+OnePay Payment Provider for Odoo 20.
 
 This module integrates OnePay payment gateway with Odoo.
 
@@ -32,6 +32,9 @@ Flow:
         "payment",
         "account_payment",
     ],
+    "external_dependencies": {"python": ["requests"]},
+    "post_init_hook": "post_init_hook",
+    "uninstall_hook": "uninstall_hook",
     "data": [
         "data/payment_provider_data.xml",
         "views/payment_provider_views.xml",
