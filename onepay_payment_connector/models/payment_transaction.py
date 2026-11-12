@@ -8,7 +8,6 @@ import requests
 from odoo import _, models
 from odoo.exceptions import ValidationError
 from odoo.fields import Domain
-from odoo.tools import float_compare
 
 _logger = logging.getLogger(__name__)
 
@@ -391,12 +390,18 @@ class PaymentTransaction(models.Model):
             return super()._extract_amount_data(payment_data)
 
         amount = payment_data.get("amount")
-        currency_code = payment_data.get("currency") or self.currency_id.name
+        currency_code = payment_data.get("currency")
+
+        # Let the framework skip amount/currency validation when the verified
+        # data does not carry them. When present, Odoo 20 core compares these
+        # against the expected transaction amount/currency and sets the error
+        # state itself on mismatch.
+        if amount in (None, False, "") or not currency_code:
+            return None
 
         return {
-            "amount": float(amount or 0.0),
+            "amount": float(amount),
             "currency_code": currency_code,
-            "precision_digits": self.currency_id.decimal_places,
         }
 
     def _apply_updates(self, payment_data):
@@ -411,49 +416,45 @@ class PaymentTransaction(models.Model):
     # -------------------------------------------------------------------------
 
     def _onepay_apply_payment_status(self, payment_data):
+        """Apply verified OnePay payment data to the transaction.
+
+        Invoked by Odoo 20 core through ``_apply_updates`` inside ``_process``,
+        which itself runs under the ``payment_safe_write`` context queued by
+        ``_record``. Direct field writes (``provider_reference``) are therefore
+        allowed here. Amount and currency are validated by core via
+        ``_extract_amount_data``; this method only records the provider
+        reference and sets the final state, idempotently.
+        """
         self.ensure_one()
+
+        # Idempotency: never re-process or downgrade a finalized transaction.
+        # Webhook and browser-return can both deliver the same notification.
+        allowed_to_modify = self.state not in ("done", "authorized")
+        if not allowed_to_modify:
+            _logger.info(
+                "OnePay: transaction %s already in state '%s'; skipping re-processing.",
+                self.reference, self.state,
+            )
+            return
 
         provider_reference = payment_data.get("provider_reference")
         if provider_reference:
             self.provider_reference = provider_reference
 
-        payment_currency = payment_data.get("currency")
-        if payment_currency and payment_currency != self.currency_id.name:
-            self._set_error(
-                _("OnePay currency mismatch. Expected %(expected)s, received %(received)s.") % {
-                    "expected": self.currency_id.name,
-                    "received": payment_currency,
-                }
-            )
-            return
-
-        payment_amount = payment_data.get("amount")
-        if payment_amount not in [None, False, ""]:
-            try:
-                payment_amount = float(payment_amount)
-
-                if float_compare(
-                    payment_amount,
-                    self.amount,
-                    precision_rounding=self.currency_id.rounding,
-                ) != 0:
-                    self._set_error(
-                        _("OnePay amount mismatch. Expected %(expected)s, received %(received)s.") % {
-                            "expected": self.amount,
-                            "received": payment_amount,
-                        }
-                    )
-                    return
-
-            except Exception:
-                _logger.warning("Unable to compare OnePay amount: %s", payment_amount)
-
         status = payment_data.get("status")
         status_message = payment_data.get("status_message")
 
         if self._onepay_is_success_status(status, status_message):
+            _logger.info(
+                "OnePay: marking transaction %s as done (status=%s).",
+                self.reference, status,
+            )
             self._set_done()
         else:
+            _logger.info(
+                "OnePay: marking transaction %s as error (status=%s, message=%s).",
+                self.reference, status, status_message,
+            )
             self._set_error(
                 _("OnePay payment was not successful. Status: %(status)s. Message: %(message)s") % {
                     "status": status,

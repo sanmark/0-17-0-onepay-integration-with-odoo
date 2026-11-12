@@ -33,13 +33,20 @@ class OnePayController(http.Controller):
         # Locate the transaction so we can run the server-to-server status
         # confirmation before trusting any callback data.
         tx = Transaction._search_by_reference("onepay", payload)
+        if not tx:
+            _logger.warning("OnePay: no transaction found for payload: %s", payload)
+            return Transaction
+
+        # Authoritative server-to-server verification against the OnePay status
+        # API. The returned data (not the raw callback) is what gets applied.
         verified_data = tx._onepay_verify_status(payload)
 
-        # Odoo 20 orchestrates extraction + updates through _process().
-        tx._process(verified_data)
-
-        if tx.state == "done" and not tx.is_post_processed:
-            tx.sudo()._post_process()
+        # Odoo 20: hand the verified data to _record(), the single entry point
+        # that queues it and runs _process -> _apply_updates under the
+        # payment_safe_write context. Post-processing (sale order confirmation,
+        # cart clearing, redirect to the confirmation page) is then handled by
+        # core; we must not call _process or _post_process directly.
+        tx._record(verified_data)
 
         return tx
 
