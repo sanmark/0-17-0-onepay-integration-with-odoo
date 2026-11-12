@@ -16,6 +16,8 @@ Flow:
 """,
     "depends": ["payment", "account_payment"],
     "external_dependencies": {"python": ["requests"]},
+    "post_init_hook": "post_init_hook",
+    "uninstall_hook": "uninstall_hook",
     "data": [
         "data/payment_provider_data.xml",
         "views/payment_provider_views.xml",

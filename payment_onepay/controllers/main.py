@@ -36,7 +36,7 @@ class OnePayController(http.Controller):
         verified_data = tx._onepay_verify_status(payload)
 
         # Odoo 20 orchestrates extraction + updates through _process().
-        Transaction._process("onepay", verified_data)
+        tx._process(verified_data)
 
         if tx.state == "done" and not tx.is_post_processed:
             tx.sudo()._post_process()

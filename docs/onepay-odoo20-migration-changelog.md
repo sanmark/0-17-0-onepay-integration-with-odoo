@@ -128,10 +128,24 @@ Static checks: `py_compile` OK on all module files; manifest parses; zero residu
 
 ---
 
+## Follow-up verification and fixes
+
+The Odoo 20 source was verified against the `20.0` branch after the initial migration:
+
+- `payment.method.provider_id` is required, and `payment.method.image` is required.
+- `payment.provider` uses `is_live`; `state` is obsolete.
+- Provider data now creates the provider before the payment method and links the method through
+  `provider_id`.
+- `account_payment` provides `_ensure_payment_method_line`; the redundant custom provider
+  `create`/`write` wiring and `hasattr` guard were removed in favor of Odoo's standard lifecycle.
+- The provider form contains `group name="provider_credentials"` inside the `configuration` page;
+  there is no `credentials` page.
+- `payment.transaction._process` is an instance method accepting only `payment_data`; the controller
+  now calls it on the located transaction.
+- Standard `post_init_hook` and `uninstall_hook` provider setup/reset functions were added.
+
 ## Open decisions (human call needed)
 
-1. **🔶 Live-core verification outstanding (Step 0 a–f).** All six verification items were assumed from PROMPT.md §3 because no Odoo 20 source is on this machine. Re-run Step 0 against the real build; if anything differs, core wins and the corresponding step must be revised.
-2. **`_ensure_payment_method_line` guard (Step 6).** Left guarded by `hasattr` because I could not confirm the method exists in Odoo 20 core (Step 0b). The prompt's Done criteria want legacy `hasattr` hedging gone — the *controller* version-hedging **is** removed, but this provider-wiring guard remains pending confirmation. Once Step 0b is confirmed on the real build, remove the guard (`payment_provider.py:69`) and call `provider._ensure_payment_method_line(allow_create=True)` directly.
-3. **Base-URL accessor choice (Step 4 / 0e).** Implemented `get_str`. If the target build lacks it, switch to `self.get_base_url()`.
-4. **Webhook has no inbound signature verification** (investigation report §3.3 / Open question #3). Trust rests entirely on the server-to-server `_onepay_verify_status` call plus amount/currency matching. **Per the prompt, the trust model was deliberately left unchanged in this port.** Flagged for a human decision on whether Odoo 20 hardening (or OnePay signed callbacks, if available) should be added in a follow-up.
-5. **No automated tests exist.** There is no `tests/` directory, so there is no regression net. Consider adding at least a success/failure flow test alongside the port.
+1. **Base-URL accessor choice (Step 4 / 0e).** Implemented `get_str`. Confirm this accessor on the exact Odoo.sh build.
+2. **Webhook has no inbound signature verification** (investigation report §3.3 / Open question #3). Trust rests entirely on the server-to-server `_onepay_verify_status` call plus amount/currency matching. **Per the prompt, the trust model was deliberately left unchanged in this port.** Flagged for a human decision on whether Odoo 20 hardening (or OnePay signed callbacks, if available) should be added in a follow-up.
+3. **No automated tests exist.** There is no `tests/` directory, so there is no regression net. Consider adding at least a success/failure flow test alongside the port.
