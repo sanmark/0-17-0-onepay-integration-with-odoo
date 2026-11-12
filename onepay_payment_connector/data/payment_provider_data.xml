@@ -10,14 +10,14 @@
         <field name="name">OnePay</field>
         <field name="code">onepay</field>
         <field name="is_live">False</field>
-        <field name="redirect_form_view_id" ref="onepay_payment_connector.redirect_form"/>
+        <field name="redirect_form_view_id" ref="redirect_form"/>
         <field name="image_128" type="bytes" file="onepay_payment_connector/static/description/icon.png"/>
     </record>
 
     <record id="payment_method_onepay" model="payment.method">
         <field name="name">OnePay</field>
         <field name="code">onepay</field>
-        <field name="provider_id" ref="onepay_payment_connector.payment_provider_onepay"/>
+        <field name="provider_id" ref="payment_provider_onepay"/>
         <field name="sequence">10</field>
         <field name="active">True</field>
         <field name="image" type="bytes" file="onepay_payment_connector/static/description/icon.png"/>
