@@ -7,41 +7,35 @@
         <field name="inherit_id" ref="payment.payment_provider_form"/>
         <field name="arch" type="xml">
 
-            <xpath expr="//notebook" position="inside">
-                <page string="OnePay Credentials" name="onepay_credentials" invisible="code != 'onepay'">
-                    <group>
-                        <group string="Credentials">
-                            <field name="onepay_app_id"
-                                   invisible="code != 'onepay'"
-                                   required="code == 'onepay'"/>
+            <xpath expr="//page[@name='credentials']" position="inside">
+                <group string="OnePay Credentials" invisible="code != 'onepay'">
+                    <field name="onepay_app_id"
+                           required="code == 'onepay'"/>
 
-                            <field name="onepay_app_token"
-                                    invisible="code != 'onepay'"
-                                    required="code == 'onepay'"
-                                    password="True"/>
+                    <field name="onepay_app_token"
+                           required="code == 'onepay'"
+                           password="True"/>
 
-                            <field name="onepay_hash_salt"
-                                   invisible="code != 'onepay'"
-                                   required="code == 'onepay'"
-                                   password="True"/>
+                    <field name="onepay_hash_salt"
+                           required="code == 'onepay'"
+                           password="True"/>
 
-                            <field name="onepay_api_base_url"
-                                   invisible="code != 'onepay'"
-                                   required="code == 'onepay'"/>
-                        </group>
+                    <field name="onepay_api_base_url"
+                           required="code == 'onepay'"/>
+                </group>
+            </xpath>
 
-                        <group string="Callback URL">
-                            <div class="alert alert-info" role="status" colspan="2">
-                                Add this URL in the OnePay merchant portal APP callback setting:
-                                <br/>
-                                <strong>/payment/onepay/webhook</strong>
-                                <br/>
-                                Full example:
-                                <strong>https://your-domain.com/payment/onepay/webhook</strong>
-                            </div>
-                        </group>
-                    </group>
-                </page>
+            <xpath expr="//page[@name='configuration']" position="inside">
+                <group string="OnePay Callback URL" invisible="code != 'onepay'">
+                    <div class="alert alert-info" role="status" colspan="2">
+                        Add this URL in the OnePay merchant portal APP callback setting:
+                        <br/>
+                        <strong>/payment/onepay/webhook</strong>
+                        <br/>
+                        Full example:
+                        <strong>https://your-domain.com/payment/onepay/webhook</strong>
+                    </div>
+                </group>
             </xpath>
 
         </field>

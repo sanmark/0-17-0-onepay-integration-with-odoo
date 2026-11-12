@@ -14,7 +14,7 @@ Flow:
 - OnePay sends webhook callback
 - Odoo verifies payment using OnePay transaction status API
 """,
-    "depends": ["payment"],
+    "depends": ["payment", "account_payment"],
     "data": [
         "data/payment_provider_data.xml",
         "views/payment_provider_views.xml",
