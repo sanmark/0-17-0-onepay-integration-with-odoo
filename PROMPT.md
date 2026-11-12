@@ -1,178 +1,90 @@
-# Investigation Prompt — OnePay Payment Gateway Module: Odoo 18/19 → Odoo 20 Upgrade
+# Migration Prompt — OnePay Payment Gateway: Odoo 18/19 → Odoo 20
 
-> **How to use this file:** Give this entire document to your coding agent as its task prompt, run it against the local OnePay module source, and let it produce `onepay-odoo20-investigation-report.md` in the same `docs/` folder. Return that report here and the migration work will be planned and executed from it.
+> **How to use this file:** Give this entire document to your coding agent as its task prompt, together with `docs/onepay-odoo20-investigation-report.md`. The agent executes the port on a new branch, then writes `docs/onepay-odoo20-migration-changelog.md` describing exactly what it changed. Do not merge until the smoke tests in Section 5 pass on a real Odoo 20 instance.
 
 ---
 
 ## 1. Role & objective
 
-You are a senior Odoo developer performing a **read-only investigation** of an existing **OnePay payment gateway integration module** currently built for **Odoo 18 and 19**. The goal is to prepare a precise, exhaustive migration dossier so the module can be ported to **Odoo 20** (released September 2026; Python 3.12–3.14, PostgreSQL 16+).
-
-You will **not** change any code in this pass. You will produce a single structured report that catalogs what the module does, how it is built, and every place it collides with an Odoo 20 breaking change — each finding tied to a concrete file and line range.
-
-- Investigate the conceptand-10 branch
+You are a senior Odoo developer. Port the **`payment_onepay`** module from Odoo 18/19 to **Odoo 20** (Python 3.12–3.14, PostgreSQL 16+). The investigation is already done — follow `docs/onepay-odoo20-investigation-report.md`, which rated this migration **Low difficulty**. Keep the port **minimal and surgical**: do not redesign the module, do not change the OnePay REST contract (`/v3/checkout/link/`, `/v3/transaction/status/`), and do not change the payment flow behavior. Only change what Odoo 20 requires.
 
 ## 2. Rules of engagement
 
-- **Do not modify, move, rename, or delete any source file.** This is investigation only.
-- **Cite everything** as `path/to/file.py:LINE` or `:START–END`. A finding without a location is not useful.
-- When you quote code, quote the **minimum** needed to show the pattern (a few lines), not whole files.
-- Do not guess. If something is ambiguous or you cannot find it, say so explicitly under an **"Open questions"** heading rather than inventing an answer.
-- Prefer facts from the actual source tree over assumptions about how OnePay modules "usually" work.
-- If the module is split across several addon folders, investigate all of them and say how they relate.
+- Work on a **conceptand-10** branch. Do not commit. I will reveiw and commit my self. Never commit to the main or dev branch or any other branch also.
+- Make the **smallest change that is correct**. Preserve existing behavior, field names, and the OnePay API payloads exactly unless Odoo 20 forces a change.
+- **Verify before you assume.** Several facts must be checked against the **actual installed Odoo 20 core source** (see Section 4, "Verify" items) — not from memory and not from this prompt alone. Where this prompt states an Odoo 20 fact, it is from the official Odoo 20 documentation, but still confirm it against the core module you are building on.
+- Your best reference is a **known-good Odoo 20 core redirect-style provider** — read `addons/payment_demo`, `addons/payment_razorpay`, or `addons/payment_mollie` in your Odoo 20 source and mirror their controller + transaction patterns. Copy the shape, not fictional APIs.
+- After each change group, note it in the changelog with the file and line touched.
 
-## 3. What to produce
+## 3. Confirmed Odoo 20 facts (from official Odoo 20 docs — still confirm against your core build)
 
-Write one Markdown file: **`docs/onepay-odoo20-investigation-report.md`**, following the report template in Section 6. It must be self-contained enough that a developer who has never seen this module could plan the Odoo 20 port from it alone.
+- **Payment transaction provider hooks (current in Odoo 20):** `_extract_reference(provider_code, payment_data)`, `_extract_amount_data(payment_data)`, `_apply_updates(payment_data)`, orchestrated by `_process(provider_code, payment_data)`; `_search_by_reference(provider_code, payment_data)` finds the transaction. `_apply_updates` must NOT be called directly — payment data goes through `_process()`.
+- **Legacy hooks to remove:** `_get_tx_from_notification_data` and `_process_notification_data` are **not** the Odoo 20 API. Remove these overrides and the `hasattr` dispatch that selects between them.
+- **`_get_specific_rendering_values(processing_values)`** still exists in Odoo 20 — keep the redirect builder.
+- **Security:** `ir.model.access` + `ir.rule` are merged into a single `ir.access` model (operation = subset of `crud`, optional group, optional domain). This module ships none, so there is nothing to rewrite — only verify inherited access still works.
+- **Typed config params:** string-based `get_param`/`set_param` are superseded by typed `get_str`/`get_int`/`get_bool`/`get_float` (and `set_*`).
+- **Platform:** Python 3.12–3.14, PostgreSQL 16+.
 
----
+## 4. Change groups (execute in order)
 
-## 4. Investigation tasks
+### Step 0 — Verify against live Odoo 20 core (blocking)
+Before editing, confirm from the installed Odoo 20 source:
+- (a) The transaction processing entry point and controller call pattern used by a core redirect provider (`_process(provider_code, payment_data)` and how the controller invokes it).
+- (b) `payment.provider._setup_provider(code)` and `_ensure_payment_method_line(...)` still exist with the same signatures (the module `hasattr`-guards the latter — resolve this).
+- (c) The `payment.method` model fields (name/code/sequence/active + any newly-required field).
+- (d) The core `payment.payment_provider_form` still has pages named `credentials` and `configuration`.
+- (e) The correct typed accessor for the base URL (`get_str("web.base.url", ...)` vs a record-level `get_base_url()` helper).
+- (f) That `payment` and `account_payment` are still the correct dependency module names.
+Record each answer in the changelog. If any differs from this prompt, follow the core source, not this prompt.
 
-Work through these in order. For each, record findings in the report.
+### Step 1 — Manifest & platform (report finding #11)
+- `__manifest__.py`: set `version` to `"20.0.1.0.0"`.
+- Add `"external_dependencies": {"python": ["requests"]}` (the module imports `requests` at `models/payment_transaction.py:6`).
+- Confirm `depends = ["payment", "account_payment"]` are valid Odoo 20 module names (per Step 0f).
 
-### 4.1 Module inventory & manifest
-- Locate the module root(s). List the full directory tree (folders + files), noting anything non-standard.
-- Open `__manifest__.py`: record `name`, `version`, `depends`, `external_dependencies` (Python/bin), `data`, `assets`, `application`, `installable`, `license`, `auto_install`, and any `pre_init_hook` / `post_init_hook` / `uninstall_hook`.
-- Record the declared Odoo series (from `version`) and confirm whether the code has any version-conditional branches (e.g. `if odoo.release.version_info...`).
-- List every third-party Python package imported anywhere in the module.
+### Step 2 — Payment transaction API (report finding #13 — the main change)
+In `models/payment_transaction.py`:
+- **Remove** the legacy overrides `_get_tx_from_notification_data` (≈`:339`) and `_process_notification_data` (≈`:372`).
+- **Keep and finalize** the Odoo 20 hooks already present: `_extract_reference` (`:379`), `_extract_amount_data` (`:389`), `_apply_updates` (`:402`) — ensure their signatures match Step 0a and that `_apply_updates` routes into your existing `_onepay_apply_payment_status` (`:413`).
+- If transaction lookup logic is still needed beyond the core default, move it into an override of `_search_by_reference(provider_code, payment_data)` rather than the removed legacy method.
+- **Keep** `_get_specific_rendering_values` (`:170`), the OnePay helpers, `_onepay_verify_status`, and `_onepay_apply_payment_status` unchanged in behavior.
 
-### 4.2 Python models
-- Enumerate every model class: file, `_name` / `_inherit`, and purpose.
-- For the **payment provider** model (`_inherit = 'payment.provider'` or legacy `payment.acquirer`): list every field added, every credential/config field (API keys, merchant/access codes, secret hashes, endpoint URLs, environment/test flags), and every overridden method (`_get_supported_currencies`, `_compute_feature_support_fields`, `_get_default_payment_method_codes`, etc.).
-- For the **payment transaction** model (`_inherit = 'payment.transaction'`): list overridden methods, especially `_get_specific_rendering_values`, `_get_tx_from_notification_data` (or legacy `_get_tx_from_feedback_data`), `_process_notification_data` (or legacy `_process_feedback_data`), `_send_payment_request`, and status-mapping logic.
-- Note any use of: `ir.config_parameter` `get_param`/`set_param`; `self._cr`, `self._context`, `self._uid`; `read_group`; `request` referenced inside a model; `_sql_constraints`; Binary fields with manual base64 (`b64encode`/`b64decode`, `base64.*`, `len()` on binary); manual domain-list concatenation; `ormcache` / `tools.ormcache`; `_table_query`; imports from `odoo.osv` or deep `odoo.*` internals.
+### Step 3 — Controller (report finding #13)
+In `controllers/main.py`:
+- Replace the `hasattr`-based dispatch at `:39-48` (`_process` / `_handle_notification_data` / `_process_notification_data`) with the single Odoo 20 call confirmed in Step 0a — typically `request.env["payment.transaction"].sudo()._process("onepay", verified_data)`.
+- Keep both routes (`/payment/onepay/webhook`, `/payment/onepay/return`), their `auth="public"`, `csrf=False`, and the `_onepay_verify_status` server-to-server confirmation exactly as they are. `request` usage in the controller is correct — leave it.
 
-### 4.3 Controllers & routes (the OnePay flow — critical)
-- Enumerate every controller and `@http.route`: path, `type` (`http`/`json`), `auth`, `methods`, `csrf`, `website`, `sitemap`.
-- Identify and document in detail the OnePay redirect/return flow:
-  - The **redirect/pay** route that builds the request to OnePay (which `vpc_*` / query parameters, in what order).
-  - The **return URL** route the customer is redirected back to.
-  - The **IPN / webhook** route OnePay calls server-to-server, if any.
-- Document the **signature / secure-hash logic**: algorithm (HMAC-SHA256 vs legacy SHA256), which parameters are hashed, hashing order, the secret used, and where verification happens on return/IPN. Flag any use of `request` that would need adjusting.
-- Note any controller that reads raw request body, headers, or query string directly.
+### Step 4 — Typed config parameter (report finding #3 / Section 5.3)
+In `models/payment_transaction.py:186`, replace `ir.config_parameter.sudo().get_param("web.base.url", "")` with the Odoo 20 accessor confirmed in Step 0e (`get_str(...)` or the record `get_base_url()` helper).
 
-### 4.4 Data files & security
-- List all XML/CSV in `data/`, `security/`, `views/`, `demo/`.
-- **Security:** record the exact contents of `ir.model.access.csv` and every `ir.rule` record. This is the single highest-impact migration area (see 5.1).
-- **Provider data:** record how the `payment.provider` record is seeded (`data/payment_provider_data.xml`) and whether the module ships its own `payment.method` records (Odoo 20 expects each provider module to carry its own payment-method data).
-- Note any `ir.config_parameter` values set via XML `<function>` or `<record>`.
+### Step 5 — Domains (report finding #4 / Section 5.5)
+In `models/payment_transaction.py:359,364`, convert the concatenated-list domains (`domain + [...]`) to Odoo 20 `Domain` objects (`from odoo.fields import Domain`; use `Domain.AND([...])` or `&`). Low risk — operators are hardcoded — but do it for forward compatibility.
 
-### 4.5 Views
-- List every view record and what it `inherit_id`s.
-- Flag deprecated view syntax: `attrs="..."`, `states="..."` (removed since Odoo 17), and any XPath that targets a core element that may have moved/renamed in Odoo 20 (payment provider form, checkout templates). Record each XPath expression and its target.
+### Step 6 — Provider wiring (report finding re: hasattr guards)
+In `models/payment_provider.py`: once Step 0b confirms `_setup_provider` and `_ensure_payment_method_line` exist in Odoo 20, **remove the `hasattr` guard** (`:69`) and call them directly. Keep the `in provider._fields` guards in `_compute_feature_support_fields` only if a field may legitimately be absent; otherwise simplify.
 
-### 4.6 Frontend — templates, JS/OWL, assets
-- List QWeb templates (redirect form template, checkout fragments) and the assets bundles they are registered in (`web.assets_frontend`, `payment.*`, etc.).
-- For every `.js` file: note whether it is legacy (`odoo.define`) or ESM, whether it uses OWL, and flag Owl-2 patterns that break under **Owl 3** (see 5.2): `static props` / `defaultProps`, `useState`, `useRef`, `useExternalListener`, `t-portal`, `t-model`, `t-esc`.
-- Note any `t-esc` usage in QWeb templates and any JS that patches core payment-form components.
+### Step 7 — Views (report Section 5.1)
+In `views/payment_provider_views.xml`: confirm the two XPaths (`//page[@name='credentials']` `:10`, `//page[@name='configuration']` `:28`) still resolve on the Odoo 20 core form (Step 0d). Adjust only if a page was renamed. No `attrs=`/`states=` exist, so nothing else to change here.
 
-### 4.7 End-to-end payment flow narrative
-Write a step-by-step trace of a full successful payment (customer clicks pay → redirect to OnePay → return → IPN → transaction set to `done`), naming the exact method/route at each hop. Then do the same for the failure/cancel path. This is what the migration will be validated against.
+### Step 8 — Data & payment-method ownership (report finding #12)
+In `data/payment_provider_data.xml`: confirm the `payment.method` (`:4`) and `payment.provider` (`:16`) seed records match the Odoo 20 schema (Step 0c). The module already ships its own `payment.method`, which Odoo 20 expects — keep it; adjust only fields that became required/renamed.
 
-### 4.8 External & environment dependencies
-- OnePay endpoint URLs (test vs production) and where they are configured.
-- Any hardcoded credentials, URLs, or merchant IDs (flag as a finding, don't expose secret values in full).
-- Python/runtime assumptions that matter for Python 3.12+ (e.g. packages that may need re-pinning).
+### Step 9 — Security (report finding #1)
+No `ir.access` rows to write (the module ships none). Only add module-local `ir.access` rows **if** Step 0 testing shows the inherited models lack needed access for an ordinary portal/public user under Odoo 20's core `ir.access`.
 
----
+## 5. Smoke tests (must pass before done)
+On a clean Odoo 20 instance:
+1. Module installs with no errors; provider appears under Accounting → Payment Providers.
+2. Enter OnePay credentials, enable the provider; the form (credentials + configuration pages) renders.
+3. **Success flow** (report Section 6.1): start a payment → redirect to OnePay `/v3/checkout/link/` → return → webhook → `_onepay_verify_status` → transaction reaches `done`. Confirm amount + currency matching still gate the result.
+4. **Failure/cancel flow** (report Section 6.2): transaction reaches `error`, correct message shown, `/payment/status` displays the failure.
+5. No deprecation warnings in the server log referencing this module.
+6. If you added anything, run the module through `./odoo-bin upgrade_code --addons-path <path>` on a clean tree and review the diff.
 
-## 5. Odoo 20 breaking-change checklist (what to flag)
-
-For each item below, search the module and record **every** occurrence with a location and a one-line migration note. If an item has zero occurrences, state "none found" — absence is a useful result.
-
-### 5.1 Security model merge — `ir.model.access` + `ir.rule` → `ir.access`
-Odoo 20 replaces separate access-rights CSV and record-rule (`ir.rule`) records with a **single `ir.access` model**. Each row has a model, an `operation` (a subset of `crud`, e.g. `r`, `crud`), an optional group, and an optional domain. A row **with** a group grants; a row **without** a group restricts everyone; restrictions override grants, and there is no default operation. → Flag the current `ir.model.access.csv` and all `ir.rule` records for rewrite.
-
-### 5.2 Owl 3 (frontend)
-Owl 3 removes/renames: `static props`/`defaultProps` → `useProps(...)`; `useState` → `proxy`/`signal`/`computed`; `useRef("x")` → `signal.ref()`; `useExternalListener` → `useListener`; `t-portal`/`t-model` → `t-custom-portal` / signal-based `t-model`; `t-esc` reported removed. The compat layer rejects components still declaring `static props`/`defaultProps`, and the bundle no longer exports `useState`/`useRef`/`useExternalListener`. Failures surface at runtime → flag every match.
-
-### 5.3 Typed config parameters
-`ir.config_parameter` `get_param`/`set_param` (string-based) are superseded by typed `get_int`/`get_bool`/`get_float`/`get_str` and matching `set_*`. Behavior differs (stored `0` is now valid; invalid values log a warning). → Flag every `get_param`/`set_param` call.
-
-### 5.4 Binary fields → `BinaryValue`
-Binary field reads now return a lazy `BinaryValue` (use `.content`, `.to_base64()`, `.size`, `.mimetype`), and writes take `BinaryBytes(...)`. Manual `b64encode`/`b64decode`/`len()` on binary breaks. → Flag all manual base64 handling.
-
-### 5.5 Domains → `Domain` objects
-List concatenation to build domains is discouraged (and flagged as a security concern for user-supplied operators). Prefer `Domain` objects (`&`, `|`, `~`, `Domain.AND/OR`). → Flag concatenated-list domains, especially any built from request/user input.
-
-### 5.6 `request` removed from model code
-`request` is no longer available inside models; use `env.website` or pass values from the controller. → Flag any model method that references `request`.
-
-### 5.7 Imports & module structure
-The ORM now lives under `odoo/orm/`; do not import from `odoo.orm.*`. Use public entry points only (`odoo.api`, `odoo.fields` incl. `Domain`, `odoo.models`, `odoo.tools` incl. `SQL`). `odoo.osv` deprecated since 19.0. → Flag non-public imports.
-
-### 5.8 `_sql_constraints` → constraint descriptors
-`_sql_constraints` lists give way to class attributes `models.Constraint` / `models.UniqueIndex` / `models.Index` (names start with `_`). → Flag any `_sql_constraints`.
-
-### 5.9 Deprecated ORM accessors (since 19.0)
-`self._cr` → `self.env.cr`; `self._context` → `self.env.context`; `self._uid` → `self.env.uid`; `read_group` → newer grouping calls; `_table_query`/`_init_column`/`_table_has_rows` removed/deprecated. → Flag each.
-
-### 5.10 RPC / external API
-`/xmlrpc`, `/xmlrpc/2`, `/jsonrpc` are deprecated for removal; the `db` RPC service is removed in 20; `common`/`object` slated for removal in 22. Binary-field RPC format changed. → Flag any integration (including OnePay IPN tooling or external scripts) relying on these; note the JSON-2 API as the target.
-
-### 5.11 Manifest & platform
-`version` → `20.0.x`; confirm every `depends` name still exists in Odoo 20; re-pin external Python deps for Python 3.12–3.14; confirm PostgreSQL 16+ assumptions. → Flag manifest and dependency items.
-
-### 5.12 Payment-method data ownership
-In Odoo 20 each provider module carries its own `payment.method` data. → Flag whether the module currently relies on core-seeded methods and must now ship its own.
-
-> Note: this checklist reflects the Odoo 20.0 release-notes / ORM changelog as of the investigation date. A few items (exact removal vs deprecation of `_sql_constraints`, `get_param`) are reported inconsistently across sources — where behavior matters, the report should recommend verifying against the actual Odoo 20 source on the target build rather than assuming.
-
----
-
-## 6. Report template
-
-Produce `docs/onepay-odoo20-investigation-report.md` with these sections:
-
-```
-# OnePay Payment Gateway — Odoo 20 Migration Investigation Report
-
-## 0. Summary
-- Module name, current version, Odoo series supported.
-- Overall migration difficulty: Low / Medium / High, with a one-paragraph justification.
-- Top 5 highest-risk items.
-
-## 1. Module inventory
-- Directory tree.
-- Manifest breakdown (depends, data, assets, hooks, external deps).
-
-## 2. Models
-- Per model: name, inherit, fields, overridden methods, responsibilities.
-
-## 3. Controllers & OnePay flow
-- Route table.
-- Redirect / return / IPN flow.
-- Signature & hash verification logic.
-
-## 4. Data & security
-- Access rules (full ir.model.access.csv + ir.rule contents).
-- Provider & payment-method data seeding.
-- Config parameters.
-
-## 5. Views & frontend
-- View inheritance table + deprecated-syntax flags.
-- QWeb templates & asset bundles.
-- JS/OWL inventory + Owl-3 flags.
-
-## 6. End-to-end flow narrative
-- Success path (step by step, with method/route names).
-- Failure / cancel path.
-
-## 7. Odoo 20 breaking-change findings
-A table, one row per finding:
-| # | Area (5.x) | File:Line | Current pattern | Required Odoo 20 change | Risk | Effort |
-
-## 8. Migration plan outline
-- Ordered list of change groups (security → manifest → models → controllers → views → JS → data), with dependencies between them.
-- What must be verified against live Odoo 20 source.
-
-## 9. Open questions
-- Anything ambiguous, missing, or needing a human decision.
-```
-
----
+## 6. Deliverables
+- The `conceptand-10` branch without commit.
+- `docs/onepay-odoo20-migration-changelog.md`: per change group, what changed (file:line), the Step 0 verification answers, and the smoke-test results.
+- An **"Open decisions"** section flagging anything that needed a human call — in particular the webhook's lack of inbound signature verification (report Section 3.3 / Open question #3): note it, but do **not** change the trust model in this port unless instructed.
 
 ## 7. Done criteria
-
-The investigation is complete when every Section 4 task and every Section 5 checklist item has either concrete findings (with locations) or an explicit "none found", the end-to-end flow is traced for both success and failure, and Section 8 gives an ordered migration outline. Keep the report factual and specific — it is the single source of truth for the Odoo 20 port.
+The module installs and runs on Odoo 20, both payment flows pass, the legacy `hasattr` version-hedging is gone, every Section 4 step is either done or explicitly marked "no change needed (verified)", and the changelog documents it. Behavior and the OnePay API contract are unchanged.
